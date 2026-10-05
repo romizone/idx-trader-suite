@@ -1,0 +1,12 @@
+{
+  "name": "idx-scalper-screener",
+  "version": "1.0.0",
+  "description": "Screener scalping saham IDX berbasis API stock.arjum.com",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=21"
+  }
+}

@@ -1,0 +1,6 @@
+.env
+.env.*
+cache
+.claude
+node_modules
+README.md

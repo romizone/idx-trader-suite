@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IDX Trader Suite</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b1220'/><path d='M5 22l7-8 5 5 10-11' stroke='%2322d3a6' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script type="module" src="/js/main.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="26" height="26"><rect width="32" height="32" rx="7" fill="#0b1220"/><path d="M5 22l7-8 5 5 10-11" stroke="#22d3a6" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div>
+        <h1>IDX Trader Suite</h1>
+        <div class="sub" id="dataInfo">Data: IDX Edge PRO</div>
+      </div>
+    </div>
+    <div class="status">
+      <div class="pill" id="mkt"><span class="dot"></span><span id="mktLabel">—</span></div>
+      <div class="clock mono" id="clock">--:--:-- WIB</div>
+      <div class="quota" title="Kuota API harian (reset 00:00 WIB)">
+        <div class="qlabel">Kuota <span class="mono" id="quotaTxt">—</span></div>
+        <div class="qbar"><div id="quotaBar"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="nav" id="nav">
+      <div class="ng">Screener</div>
+      <a href="#/scalper" data-v="scalper"><i>⚡</i>Scalper</a>
+      <a href="#/swing" data-v="swing"><i>🎯</i>Swing</a>
+      <a href="#/swingma200" data-v="swingma200"><i>📏</i>SwingMA200</a>
+      <a href="#/squant" data-v="squant"><i>🧭</i>Squant Screener</a>
+      <a href="#/teknikal" data-v="teknikal"><i>📐</i>Teknikal</a>
+      <a href="#/asing" data-v="asing"><i>🌏</i>Aliran Asing</a>
+      <div class="ng">Pasar</div>
+      <a href="#/market" data-v="market"><i>🏛</i>Market</a>
+      <a href="#/heatmap" data-v="heatmap"><i>🟩</i>Heatmap</a>
+      <a href="#/watchlist" data-v="watchlist"><i>⭐</i>Watchlist</a>
+      <div class="ng">Per saham</div>
+      <a href="#/saham" data-v="saham"><i>📈</i>Analisa Saham</a>
+      <a href="#/bandar" data-v="bandar"><i>🏦</i>Bandarmologi</a>
+      <a href="#/tape" data-v="tape"><i>🧾</i>Running Trade</a>
+      <a href="#/fundamental" data-v="fundamental"><i>📊</i>Fundamental</a>
+      <a href="#/insider" data-v="insider"><i>🕴</i>Insider</a>
+      <a href="#/musiman" data-v="musiman"><i>📅</i>Musiman</a>
+      <div class="ng">Riset</div>
+      <a href="#/bandingkan" data-v="bandingkan"><i>⚖️</i>Bandingkan</a>
+      <a href="#/backtest" data-v="backtest"><i>🧪</i>Backtest</a>
+      <div class="ng">Alat</div>
+      <a href="#/kalkulator" data-v="kalkulator"><i>🧮</i>Kalkulator</a>
+      <a href="#/jurnal" data-v="jurnal"><i>📓</i>Jurnal Trading</a>
+      <button class="nav-out" id="logout" hidden>⎋ Keluar</button>
+    </nav>
+    <main id="view"></main>
+  </div>
+
+  <footer class="foot">
+    Data: stock.arjum.com (IDX Edge PRO) · kuota 1.000 call/hari, reset 00:00 WIB · semua respons di-cache untuk hemat kuota.
+    Alat bantu analisa, bukan rekomendasi investasi — keputusan jual/beli sepenuhnya tanggung jawab Anda.
+  </footer>
+  <div id="toast" class="toast"></div>
+</body>
+</html>
