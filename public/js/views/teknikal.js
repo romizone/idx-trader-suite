@@ -9,8 +9,10 @@ export async function mount(el) {
   const page = $('.page', el);
   let j;
   try { j = await api('/api/tech'); } catch (e) { page.innerHTML = errBox(e); return; }
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
   const rows = j.rows;
   const sigNames = [...new Set(rows.flatMap(r => r.signals.map(s => s.t)))].sort();
+  if (!sigNames.includes(S.sig)) S.sig = ''; // sinyal tersimpan sudah tidak ada hari ini → jangan menyaring diam-diam
   const count = t => rows.filter(r => r.trend[0] === t).length;
 
   page.innerHTML = `
@@ -63,7 +65,7 @@ export async function mount(el) {
   $('#tt').onchange = e => { S.trend = e.target.value; draw(); };
   $('#ts').onchange = e => { S.sig = e.target.value; draw(); };
   $('#r1').oninput = e => { S.rsiMin = Number(e.target.value) || 0; draw(); };
-  $('#r2').oninput = e => { S.rsiMax = Number(e.target.value) || 100; draw(); };
+  $('#r2').oninput = e => { S.rsiMax = e.target.value === '' ? 100 : Number(e.target.value); draw(); };
   $('#tt-tbl thead').onclick = e => { const th = e.target.closest('th[data-k]'); if (!th) return; if (S.sortK === th.dataset.k) S.dir *= -1; else { S.sortK = th.dataset.k; S.dir = -1; } draw(); };
   $('#tt-tbl tbody').onclick = e => { const tr = e.target.closest('tr[data-code]'); if (tr) location.hash = `#/saham/${tr.dataset.code}`; };
 }

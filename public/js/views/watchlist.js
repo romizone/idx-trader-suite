@@ -38,8 +38,13 @@ async function load(live) {
   if (!rows.length) body.innerHTML = loading();
   const b = $('#wLive'); b.disabled = true;
   try {
-    const j = await api(`/api/watch?codes=${codes.join(',')}${live ? '&live=1' : ''}`);
-    rows = j.rows;
+    // Server membatasi 30 kode per permintaan → pecah supaya saham ke-31 dst. tidak hilang.
+    const parts = [];
+    for (let i = 0; i < codes.length; i += 30) parts.push(codes.slice(i, i + 30));
+    const res = await Promise.all(parts.map(c => api(`/api/watch?codes=${c.join(',')}${live ? '&live=1' : ''}`)));
+    const j = { at: res[0].at, rows: res.flatMap(x => x.rows) };
+    // Saham yang dihapus selagi permintaan berjalan jangan muncul lagi.
+    rows = j.rows.filter(r => watchlist.has(r.code));
     draw();
     if (live) toast(`Live diperbarui ${new Date(j.at).toLocaleTimeString('id-ID')} · ${codes.length} call`);
   } catch (e) { body.innerHTML = errBox(e); }

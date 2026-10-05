@@ -70,7 +70,7 @@ export function mount(el) {
       ${ladder.map(([n, p, r]) => `<tr><td>+${n} tick</td><td class="r mono">${fmtN(p)}</td><td class="r ${cls(r)}">${pct(r * 100, 2)}</td></tr>`).join('')}</table>`;
 
     // 3. ARA / ARB
-    const ap = araPct(v.prev), ara = floorT(v.prev * (1 + ap / 100)), arb = Math.max(1, ceilT(v.prev * (1 - v.arbPct / 100)));
+    const ap = araPct(v.prev), ara = floorT(v.prev * (1 + ap / 100)), arb = Math.max(v.prev >= 50 ? 50 : 1, ceilT(v.prev * (1 - v.arbPct / 100))); // papan reguler: harga minimum Rp 50
     const up = [], dn = [];
     let p = v.prev; for (let i = 0; i < 6; i++) { p += tick(p); up.push(p); }
     p = v.prev; for (let i = 0; i < 6 && p > 1; i++) { p -= tick(p - 1); dn.push(p); }

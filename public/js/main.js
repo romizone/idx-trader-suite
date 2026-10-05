@@ -29,8 +29,11 @@ let token = 0;
 
 async function route() {
   const [, name = 'scalper', arg] = location.hash.split('/');
-  const view = VIEWS[name] ? name : 'scalper';
-  const code = arg ? decodeURIComponent(arg).toUpperCase() : undefined;
+  const view = Object.hasOwn(VIEWS, name) ? name : 'scalper';
+  // Kode dari URL divalidasi: hash rusak ("%") atau berisi markup tidak boleh sampai ke halaman / localStorage.
+  let code;
+  try { code = arg ? decodeURIComponent(arg).toUpperCase() : undefined; } catch {}
+  if (code && !/^[A-Z0-9]{3,6}$/.test(code)) code = undefined;
   if (PER_STOCK.has(view)) {
     if (!code) { location.replace(`#/${view}/${currentCode.get()}`); return; }
     currentCode.set(code);
@@ -43,8 +46,10 @@ async function route() {
   const my = ++token;
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
-  const el = $('#view');
-  el.innerHTML = '';
+  // Elemen #view diganti baru tiap pindah menu: listener yang dipasang menu sebelumnya ikut terbuang,
+  // dan menu lama yang masih menunggu data bisa tahu dirinya sudah ditinggal (el.isConnected === false).
+  const old = $('#view'), el = old.cloneNode(false);
+  old.replaceWith(el);
   el.className = `view v-${view}`;
   let mod;
   try {
@@ -71,8 +76,15 @@ async function route() {
   }
   try {
     if (my !== token) return;
-    cleanup = await mod.mount(el, { code, arg });
-  } catch (e) { el.innerHTML = errBox(e); console.error(e); }
+    const c = await mod.mount(el, { code, arg });
+    // Pengguna sudah pindah menu selagi menu ini memuat: bereskan, jangan timpa menu yang sekarang.
+    if (my !== token) { if (typeof c === 'function') c(); return; }
+    cleanup = c;
+  } catch (e) {
+    console.error(e);
+    if (my !== token) return;
+    el.innerHTML = errBox(e);
+  }
   window.scrollTo(0, 0);
 }
 

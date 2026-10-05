@@ -18,7 +18,7 @@ function distBar(d, max) {
 }
 
 export async function mount(el) {
-  let chart = null, alive = true, data = null;
+  let chart = null, alive = true, data = null, pseq = 0, cand = null;
   el.innerHTML = `<div class="page">
     <div class="phead">
       <div><h2>📏 SwingMA200</h2><div class="flat">Harga <b>di atas MA200 harian</b> tetapi masih <b>≤ <span id="mxl">${S.maxDist}</span>% di atas MA200</b> — area pullback/awal trend untuk swing</div></div>
@@ -36,10 +36,12 @@ export async function mount(el) {
 
   const load = async () => {
     $('#mbody').innerHTML = loading(`Menghitung MA200 untuk ${S.top} saham…`);
+    const top = S.top; // respons universe yang sudah diganti lagi diabaikan
     try {
-      data = await api('/api/ma200?top=' + S.top);
-      if (alive) draw();
-    } catch (e) { if (alive) $('#mbody').innerHTML = errBox(e); }
+      const j = await api('/api/ma200?top=' + top);
+      if (!alive || top !== S.top) return;
+      data = j; draw();
+    } catch (e) { if (alive && top === S.top) $('#mbody').innerHTML = errBox(e); }
   };
 
   const filtered = () => {
@@ -83,7 +85,7 @@ export async function mount(el) {
             <td class="r">${fmtN(r.price)}</td><td class="r ${cls(r.chg)}">${pct(r.chg)}</td>
             <td>${sparkMa(r.spark, r.sparkMa)}</td>
             <td class="r">${fmtN(r.ma200, 0)}</td>
-            <td class="r"><b class="${r.dist <= 3 ? 'info' : ''}">+${fmtN(r.dist, 2)}%</b></td>
+            <td class="r"><b class="${r.dist <= 3 ? 'info' : ''}">${pct(r.dist, 2)}</b></td>
             <td>${distBar(r.dist, S.maxDist)}</td>
             <td class="r ${cls(r.slope)}">${pct(r.slope, 2)}</td>
             <td class="r ${r.ma50 > r.ma200 ? 'up' : 'down'}">${fmtN(r.ma50, 0)}</td>
@@ -105,15 +107,18 @@ export async function mount(el) {
   const preview = async code => {
     const r = data.rows.find(x => x.code === code);
     if (!r) return;
+    const my = ++pseq; // hanya panggilan terakhir yang boleh menggambar (filter diketik cepat memanggil ini berulang)
     disposeChart(chart); chart = null;
-    $('#mprev').innerHTML = `<div class="card"><h3>${r.code} · ${esc(r.name)} — harga ${fmtN(r.price)}, MA200 ${fmtN(r.ma200, 0)} (+${fmtN(r.dist, 2)}%)
+    $('#mprev').innerHTML = `<div class="card"><h3>${r.code} · ${esc(r.name)} — harga ${fmtN(r.price)}, MA200 ${fmtN(r.ma200, 0)} (${pct(r.dist, 2)})
       <span class="links"><a class="btn small" href="#/saham/${code}">Analisa →</a><a class="btn small" href="#/bandar/${code}">Bandar →</a><a class="btn small" href="#/backtest/${code}">Backtest →</a><button class="btn small" id="mclose">✕</button></span></h3>
       <div class="legend" style="margin-bottom:6px"><i style="background:#5aa9ff"></i>MA50 <i style="background:#f5b942"></i>MA200 <i style="background:rgba(245,185,66,.4)"></i>Batas +${S.maxDist}%</div>
       <div id="mchart" class="chart" style="height:340px"></div></div>`;
     $('#mclose').onclick = () => { S.sel = null; disposeChart(chart); chart = null; $('#mprev').innerHTML = ''; document.querySelectorAll('#mt tr.sel').forEach(t => t.classList.remove('sel')); };
     try {
-      const j = await api(`/api/candles?code=${code}&limit=500`);
-      if (!alive || S.sel !== code) return;
+      // Candle saham yang sama dipakai ulang: mengubah filter tidak perlu mengambil ulang dari server.
+      const j = cand?.code === code ? cand.j : await api(`/api/candles?code=${code}&limit=500`);
+      if (!alive || my !== pseq || S.sel !== code || !$('#mchart')) return;
+      cand = { code, j };
       chart = makeChart($('#mchart'), 340);
       const { rows } = candleSeries(chart, j.rows);
       // (500 hari agar garis MA200 terlihat penuh pada 120+ candle terakhir)
@@ -125,7 +130,7 @@ export async function mount(el) {
       chart.addLineSeries({ color: 'rgba(245,185,66,.4)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false })
         .setData(m200.map(p => ({ time: p.time, value: p.value * (1 + S.maxDist / 100) })));
       chart.timeScale().setVisibleLogicalRange({ from: rows.length - 120, to: rows.length + 2 });
-    } catch (e) { if (alive) $('#mchart').innerHTML = errBox(e); }
+    } catch (e) { if (alive && my === pseq && $('#mchart')) $('#mchart').innerHTML = errBox(e); }
   };
 
   const num = (id, key, def) => $(id).addEventListener('input', e => { S[key] = e.target.value === '' ? def : Number(e.target.value); if (data) draw(); });

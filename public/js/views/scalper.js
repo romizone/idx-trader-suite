@@ -104,7 +104,7 @@ async function scan(force = false) {
   b.disabled = true; b.textContent = '⟳ Scanning…';
   try {
     const j = await api('/api/scan' + (force ? '?force=1' : ''));
-    S.meta = j; S.rows = j.rows;
+    S.meta = j; S.rows = j.rows; S.live.clear(); // baris kembali ke data EOD → tidak ada lagi yang "live"
     if (!$('#tbody')) return;
     showInfo(); render();
   } catch (e) { toast('Gagal scan: ' + e.message, true); }
@@ -113,7 +113,8 @@ async function scan(force = false) {
 
 async function liveUpdate() {
   const codes = filtered().slice(0, LIVE_N).map(r => r.code);
-  if (!codes.length) return;
+  if (!codes.length || S.liveBusy) return;
+  S.liveBusy = true;
   const b = $('#btnLive'); b.disabled = true;
   try {
     const j = await api('/api/live?codes=' + codes.join(','));
@@ -129,7 +130,7 @@ async function liveUpdate() {
     toast(`Live: ${j.rows.length - errs.length} saham diperbarui ${new Date(j.at).toLocaleTimeString('id-ID')}` + (errs.length ? ` (${errs.length} gagal)` : ''));
     if (S.current) openDetail(S.current, true);
   } catch (e) { toast('Gagal update live: ' + e.message, true); }
-  finally { if ($('#btnLive')) b.disabled = false; }
+  finally { S.liveBusy = false; if ($('#btnLive')) b.disabled = false; }
 }
 
 function setAuto() {
@@ -144,6 +145,8 @@ function setAuto() {
       toast('Auto-live dimatikan: sisa kuota < 100 call', true);
       return;
     }
+    // Tab tidak sedang dilihat → jangan habiskan kuota (tiap update = banyak call ke sumber).
+    if (document.hidden) return;
     if (app.market?.open === false) { api('/api/status').catch(() => {}); return; }
     liveUpdate();
   }, sec * 1000);
@@ -303,7 +306,7 @@ async function loadChart(code, r) {
     line(r.plan.sl, '#f45b69', 'SL'); line(r.plan.tp1, '#22d3a6', 'TP1'); line(r.plan.tp2, '#22d3a6', 'TP2');
     ch.timeScale().setVisibleLogicalRange({ from: rows.length - 60, to: rows.length + 2 });
     $('#chartInfo').textContent = `${rows.length} candle`;
-  } catch (e) { $('#chart').innerHTML = `<div class="empty">Gagal memuat grafik: ${esc(e.message)}</div>`; }
+  } catch (e) { if (S.current === code && $('#chart')) $('#chart').innerHTML = `<div class="empty">Gagal memuat grafik: ${esc(e.message)}</div>`; }
 }
 
 // Order flow dipakai juga oleh menu Analisa Saham.
@@ -314,9 +317,9 @@ export async function loadFlow(code, box, b, alive = () => true) {
     if (!alive()) return;
     const brokerRows = list => list.map(x => `<tr><td><b>${x.code}</b></td><td class="r">${fmtN(Math.abs(x.lot))}</td><td class="r">${fmtRp(Math.abs(x.val))}</td></tr>`).join('');
     box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;flex-wrap:wrap"><span>Tanggal ${f.date} · ${f.count} trx (${f.from}–${f.to}) dari ${fmtN(f.totalTrades)}</span><b>${esc(f.verdict)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;flex-wrap:wrap"><span>Tanggal ${f.date} · ${f.count} trx (${f.from || '—'}–${f.to || '—'}) dari ${fmtN(f.totalTrades)}</span><b>${esc(f.verdict)}</b></div>
       <div class="meter"><i style="width:${f.hakaPct ?? 50}%"></i></div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;flex-wrap:wrap"><span class="up">HAKA ${fmtN(f.hakaPct, 1)}% · ${fmtRp(f.buyVal)}</span><span>50 trx terakhir: <b class="${f.recentHaka >= 50 ? 'up' : 'down'}">${fmtN(f.recentHaka, 1)}% HAKA</b></span><span class="down">HAKI ${fmtN(100 - f.hakaPct, 1)}% · ${fmtRp(f.sellVal)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;flex-wrap:wrap"><span class="up">HAKA ${fmtN(f.hakaPct, 1)}% · ${fmtRp(f.buyVal)}</span><span>50 trx terakhir: <b class="${f.recentHaka >= 50 ? 'up' : 'down'}">${fmtN(f.recentHaka, 1)}% HAKA</b></span><span class="down">HAKI ${fmtN(f.hakaPct == null ? null : 100 - f.hakaPct, 1)}% · ${fmtRp(f.sellVal)}</span></div>
       <div class="grid" style="margin:12px 0">
         <div><span>Last</span><b>${fmtN(f.last)}</b></div><div><span>Range</span><b>${fmtN(f.low)} – ${fmtN(f.high)}</b></div><div><span>VWAP window</span><b>${fmtN(f.vwap, 1)}</b></div>
         <div><span>Asing net (window)</span><b class="${cls(f.fNet)}">${fmtRp(f.fNet)}</b></div>
@@ -341,5 +344,5 @@ async function loadAnalysis(code) {
     if (S.current !== code) return;
     $('#ana').innerHTML = `<div class="analysis">${miniMd(a.output || JSON.stringify(a, null, 2))}</div>`;
     b.style.display = 'none';
-  } catch (e) { $('#ana').textContent = 'Gagal: ' + e.message; b.textContent = 'Coba lagi'; b.disabled = false; }
+  } catch (e) { if (S.current !== code || !$('#ana')) return; $('#ana').textContent = 'Gagal: ' + e.message; b.textContent = 'Coba lagi'; b.disabled = false; }
 }

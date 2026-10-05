@@ -2,7 +2,13 @@
 import { $, fmtN, cls, pct, esc, toast, makeChart, disposeChart } from '../core.js';
 
 const KEY = 'idx_journal';
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
+// Trade yang datanya sah: kode, tanggal YYYY-MM-DD, angka positif. Dipakai saat menyimpan form dan impor CSV,
+// supaya baris rusak (mis. tanggal diubah Excel) tidak masuk jurnal. Data yang sudah tersimpan tidak pernah dibuang.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const pos = x => Number.isFinite(x) && x > 0;
+const valid = t => !!t && /^[A-Z0-9-]{2,8}$/.test(t.code) && DATE_RE.test(t.dIn) && pos(t.entry) && pos(t.lot) &&
+  (t.exit == null ? !t.dOut : pos(t.exit) && DATE_RE.test(t.dOut));
+const load = () => { try { const a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a.filter(t => t && typeof t === 'object') : []; } catch { return []; } };
 const save = a => { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch {} };
 const today = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 const FEE_B = 0.15, FEE_S = 0.25;
@@ -57,8 +63,8 @@ export function mount(el) {
     $('#jlist').innerHTML = !list.length ? '<div class="empty">Belum ada trade. Catat trade pertama di atas.</div>' : `<table class="mini">
       <tr><th>Kode</th><th>Masuk</th><th class="r">Harga</th><th class="r">Lot</th><th>Keluar</th><th class="r">Harga</th><th class="r">P/L</th><th class="r">%</th><th>Strategi</th><th>Catatan</th><th></th></tr>
       ${[...list].sort((a, b) => (b.dIn > a.dIn ? 1 : -1)).map(t => { const p = pnl(t); return `<tr>
-        <td><a href="#/saham/${t.code}"><b>${t.code}</b></a></td><td class="mono">${t.dIn}</td><td class="r mono">${fmtN(t.entry)}</td><td class="r">${fmtN(t.lot)}</td>
-        <td class="mono">${t.dOut || '<span class="tag warn">OPEN</span>'}</td><td class="r mono">${t.exit ? fmtN(t.exit) : '—'}</td>
+        <td><a href="#/saham/${esc(t.code)}"><b>${esc(t.code)}</b></a></td><td class="mono">${esc(t.dIn)}</td><td class="r mono">${fmtN(t.entry)}</td><td class="r">${fmtN(t.lot)}</td>
+        <td class="mono">${t.dOut ? esc(t.dOut) : '<span class="tag warn">OPEN</span>'}</td><td class="r mono">${t.exit ? fmtN(t.exit) : '—'}</td>
         <td class="r ${cls(p?.rp)}">${p ? fmtN(p.rp) : '—'}</td><td class="r ${cls(p?.pct)}">${p ? pct(p.pct, 2) : '—'}</td>
         <td>${esc(t.setup)}</td><td class="flat" style="white-space:normal;max-width:260px">${esc(t.note || '')}</td>
         <td style="white-space:nowrap"><button class="icon-btn" data-ed="${t.id}" title="Ubah">✎</button><button class="icon-btn" data-del="${t.id}" title="Hapus">✕</button></td></tr>`; }).join('')}
@@ -67,12 +73,15 @@ export function mount(el) {
     $('#jeq').hidden = closed.length < 2;
     if (closed.length >= 2) {
       const pts = [], byDay = new Map();
-      closed.sort((a, b) => ((a.dOut || a.dIn) < (b.dOut || b.dIn) ? -1 : 1)).forEach(t => { const d = t.dOut || t.dIn; byDay.set(d, (byDay.get(d) || 0) + t.p.rp); });
+      // Tanggal yang bukan YYYY-MM-DD (data lama/impor) dilewati di grafik supaya grafik tidak menggagalkan halaman.
+      closed.forEach(t => { const d = t.dOut || t.dIn; if (DATE_RE.test(d) && Number.isFinite(t.p.rp)) byDay.set(d, (byDay.get(d) || 0) + t.p.rp); });
       let cum = 0;
       for (const [d, v] of [...byDay].sort()) pts.push({ time: d, value: (cum += v) });
-      chart = makeChart($('#jchart'), 220);
-      chart.addAreaSeries({ lineColor: cum >= 0 ? '#22d3a6' : '#f45b69', topColor: cum >= 0 ? 'rgba(34,211,166,.25)' : 'rgba(244,91,105,.25)', bottomColor: 'transparent', lineWidth: 2 }).setData(pts);
-      chart.timeScale().fitContent();
+      try {
+        chart = makeChart($('#jchart'), 220);
+        chart.addAreaSeries({ lineColor: cum >= 0 ? '#22d3a6' : '#f45b69', topColor: cum >= 0 ? 'rgba(34,211,166,.25)' : 'rgba(244,91,105,.25)', bottomColor: 'transparent', lineWidth: 2 }).setData(pts);
+        chart.timeScale().fitContent();
+      } catch (e) { console.error(e); $('#jeq').hidden = true; }
     }
   };
 
@@ -81,6 +90,7 @@ export function mount(el) {
     const d = Object.fromEntries(new FormData(f));
     const t = { id: edit || Date.now().toString(36), code: d.code.toUpperCase().trim(), dIn: d.dIn, entry: Number(d.entry), lot: Number(d.lot),
       dOut: d.exit ? (d.dOut || today()) : '', exit: d.exit ? Number(d.exit) : null, setup: d.setup, note: d.note.trim() };
+    if (!valid(t)) { toast('Data trade tidak valid: periksa kode saham, tanggal, harga, dan lot', true); return; }
     list = edit ? list.map(x => (x.id === edit ? t : x)) : [...list, t];
     toast(edit ? 'Trade diperbarui' : 'Trade dicatat');
     edit = null; f.reset(); f.dIn.value = today(); $('#jtitle').textContent = 'Catat trade'; $('#jcancel').hidden = true;
@@ -89,9 +99,13 @@ export function mount(el) {
   $('#jcancel').onclick = () => { edit = null; f.reset(); f.dIn.value = today(); $('#jtitle').textContent = 'Catat trade'; $('#jcancel').hidden = true; };
   el.addEventListener('click', e => {
     const del = e.target.closest('[data-del]'), ed = e.target.closest('[data-ed]');
-    if (del && confirm('Hapus trade ini?')) { list = list.filter(t => t.id !== del.dataset.del); draw(); }
+    if (del && confirm('Hapus trade ini?')) {
+      list = list.filter(t => t.id !== del.dataset.del);
+      if (edit === del.dataset.del) $('#jcancel').click(); // trade yang sedang diubah ikut terhapus → keluar dari mode ubah
+      draw();
+    }
     if (ed) {
-      const t = list.find(x => x.id === ed.dataset.ed); edit = t.id;
+      const t = list.find(x => x.id === ed.dataset.ed); if (!t) return; edit = t.id;
       for (const k of ['code', 'dIn', 'entry', 'lot', 'dOut', 'exit', 'setup', 'note']) f[k].value = t[k] ?? '';
       $('#jtitle').textContent = `Ubah trade ${t.code}`; $('#jcancel').hidden = false; f.scrollIntoView({ behavior: 'smooth' });
     }
@@ -108,8 +122,11 @@ export function mount(el) {
     const text = await e.target.files[0]?.text();
     if (!text) return;
     const rows = text.trim().split(/\r?\n/).slice(1).map(l => (l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || []).map(c => c.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"')));
-    const add = rows.filter(r => r[0]).map((r, i) => ({ id: Date.now().toString(36) + i, code: r[0].toUpperCase(), dIn: r[1], entry: Number(r[2]), lot: Number(r[3]), dOut: r[4], exit: r[5] ? Number(r[5]) : null, setup: r[6] || 'Lainnya', note: r[7] || '' }));
-    list = [...list, ...add]; draw(); toast(`${add.length} trade diimpor`);
+    const add = rows.filter(r => r[0]).map((r, i) => ({ id: Date.now().toString(36) + i, code: r[0].toUpperCase(), dIn: r[1], entry: Number(r[2]), lot: Number(r[3]), dOut: r[5] ? r[4] : '', exit: r[5] ? Number(r[5]) : null, setup: r[6] || 'Lainnya', note: r[7] || '' }));
+    const good = add.filter(valid), skip = add.length - good.length;
+    list = [...list, ...good]; draw();
+    toast(`${good.length} trade diimpor${skip ? ` · ${skip} baris dilewati (format tidak valid, tanggal harus YYYY-MM-DD)` : ''}`, !good.length && skip > 0);
+    e.target.value = '';
   };
   draw();
   return () => disposeChart(chart);

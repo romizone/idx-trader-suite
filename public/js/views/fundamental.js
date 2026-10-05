@@ -6,7 +6,7 @@ const S = { type: 'INCOME_STATEMENT', period: 'quarterly', limit: 8, hideZero: t
 
 export async function mount(el, { code }) {
   const body = stockHeader(el, 'fundamental', code);
-  let alive = true;
+  let alive = true, seq = 0;
   body.innerHTML = `
     <div class="toolbar">
       <div class="seg" id="ft">${TYPES.map(([k, t]) => `<button data-t="${k}" class="${k === S.type ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -18,12 +18,12 @@ export async function mount(el, { code }) {
     <div id="fbody"></div>`;
 
   const load = async () => {
-    const box = $('#fbody');
+    const box = $('#fbody'), my = ++seq;
     box.innerHTML = loading('Memuat laporan keuangan…');
     try {
       const j = await api(`/api/financials?code=${code}&type=${S.type}&period=${S.period}&limit=${S.limit}`);
-      if (alive) box.innerHTML = render(j);
-    } catch (e) { if (alive) box.innerHTML = errBox(e); }
+      if (alive && my === seq) box.innerHTML = render(j);
+    } catch (e) { if (alive && my === seq) box.innerHTML = errBox(e); }
   };
   $('#ft').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; S.type = b.dataset.t; seg('#ft', b); load(); };
   $('#fp').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; S.period = b.dataset.p; seg('#fp', b); load(); };
@@ -42,7 +42,9 @@ function flatten(items) {
   const rows = [], seen = new Set();
   const walk = (obj, path, depth, parentKey) => {
     for (const [k, v] of Object.entries(obj || {})) {
-      if (k === 'total' || (k === parentKey && typeof v === 'number')) continue;
+      // Anak bernama sama dengan grupnya hanya dilewati bila memang duplikat total grup; kalau nilainya beda,
+      // itu pos tersendiri (mis. "beban operasional lainnya" di dalam grup bernama sama) dan harus tampil.
+      if (k === 'total' || (k === parentKey && typeof v === 'number' && v === obj.total)) continue;
       const p = [...path, k], id = p.join('.');
       if (!seen.has(id)) { seen.add(id); rows.push({ id, path: p, label: niceKey(k), depth, group: v && typeof v === 'object' }); }
       if (v && typeof v === 'object') walk(v, p, depth + 1, k);
@@ -69,7 +71,7 @@ function render(j) {
     const v = vals(r).slice().reverse();
     const mx = Math.max(...v.map(x => Math.abs(x || 0))) || 1;
     const last = v[v.length - 1], prev = v[v.length - 1 - yoyGap];
-    const ch = prev ? ((last - prev) / Math.abs(prev)) * 100 : null;
+    const ch = prev && last != null ? ((last - prev) / Math.abs(prev)) * 100 : null;
     return `<div class="fcard"><div class="fl">${esc(r.label)}</div><div class="fv ${cls(last)}">${fmt(last)}</div>
       <div class="fbars">${v.map(x => `<i class="${x < 0 ? 'neg' : ''}" style="height:${Math.max(2, (Math.abs(x || 0) / mx) * 100)}%"></i>`).join('')}</div>
       <div class="fs ${cls(ch)}">${ch == null ? '' : `${ch >= 0 ? '+' : ''}${fmtN(ch, 1)}% ${S.period === 'quarterly' ? 'YoY' : 'vs thn lalu'}`}</div></div>`;

@@ -104,7 +104,7 @@ export function getUniverse() {
 
 // Kode saham aktif dipakai bersama menu-menu per saham.
 export const currentCode = {
-  get() { try { return localStorage.getItem('idx_code') || 'BBCA'; } catch { return 'BBCA'; } },
+  get() { try { const c = localStorage.getItem('idx_code') || ''; return /^[A-Z0-9]{3,6}$/.test(c) ? c : 'BBCA'; } catch { return 'BBCA'; } },
   set(c) { try { localStorage.setItem('idx_code', c); } catch {} },
 };
 
@@ -117,7 +117,7 @@ export function stockPicker(host, { value, onPick, placeholder = 'Ketik kode / n
   const close = () => { list.classList.remove('open'); };
   const pick = code => { inp.value = code; close(); onPick(code); };
   const draw = () => {
-    list.innerHTML = items.map((s, i) => `<div class="pi ${i === idx ? 'on' : ''}" data-c="${s.code}"><b>${s.code}</b><span>${esc(s.name)}</span><em>${fmtN(s.close)}</em></div>`).join('');
+    list.innerHTML = items.map((s, i) => `<div class="pi ${i === idx ? 'on' : ''}" data-c="${esc(s.code)}"><b>${esc(s.code)}</b><span>${esc(s.name)}</span><em>${fmtN(s.close)}</em></div>`).join('');
     list.classList.toggle('open', items.length > 0);
   };
   inp.addEventListener('input', async () => {
@@ -152,7 +152,7 @@ export function stockHeader(el, view, code, onPick, extra = '') {
   el.innerHTML = `
     <div class="vhead">
       <div class="vpick"></div>
-      <div class="stabs">${STOCK_MENUS.map(([k, t]) => `<a href="#/${k}/${code}" class="${k === view ? 'on' : ''}">${t}</a>`).join('')}</div>
+      <div class="stabs">${STOCK_MENUS.map(([k, t]) => `<a href="#/${k}/${esc(code)}" class="${k === view ? 'on' : ''}">${t}</a>`).join('')}</div>
       ${extra}
     </div>
     <div class="vbody"></div>`;

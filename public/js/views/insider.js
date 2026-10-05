@@ -6,7 +6,7 @@ const num = s => Number(String(s ?? '').replace(/[^0-9.+-]/g, '')) || 0;
 
 export async function mount(el, { code }) {
   const body = stockHeader(el, 'insider', code);
-  let alive = true;
+  let alive = true, seq = 0;
   S.page = 1;
   body.innerHTML = `
     <div class="toolbar">
@@ -16,12 +16,12 @@ export async function mount(el, { code }) {
     <div id="ibody"></div>`;
 
   const load = async () => {
-    const box = $('#ibody');
+    const box = $('#ibody'), my = ++seq;
     box.innerHTML = loading('Memuat transaksi insider…');
     try {
       const j = await api(`/api/insiders?code=${code}&page=${S.page}${S.action ? '&action=' + S.action : ''}`);
-      if (alive) box.innerHTML = render(j);
-    } catch (e) { if (alive) box.innerHTML = errBox(e); }
+      if (alive && my === seq) box.innerHTML = render(j);
+    } catch (e) { if (alive && my === seq) box.innerHTML = errBox(e); }
   };
   $('#ia').onclick = e => {
     const b = e.target.closest('[data-a]'); if (!b) return;

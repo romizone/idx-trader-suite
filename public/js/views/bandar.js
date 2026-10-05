@@ -1,5 +1,5 @@
 // Menu Bandarmologi — broker summary (rentang tanggal & flow) + tren akumulasi broker historis.
-import { $, api, fmtN, fmtRp, cls, esc, stockHeader, makeChart, disposeChart, loading, errBox, getUniverse, subDate } from '../core.js';
+import { $, api, fmtN, fmtRp, cls, esc, stockHeader, makeChart, disposeChart, loading, errBox, getUniverse, subDate, wibToday } from '../core.js';
 
 const RANGES = [['1H', 0], ['1M', 6], ['1B', 30], ['3B', 91], ['6B', 182]];
 const COLORS = ['#22d3a6', '#5aa9ff', '#b58cff', '#f45b69', '#ff9f43', '#f5b942', '#4dd0e1', '#ff6b9d', '#9ccc65', '#90a4ae'];
@@ -9,8 +9,12 @@ export async function mount(el, { code }) {
   const body = stockHeader(el, 'bandar', code);
   let chart = null, alive = true;
   const u = await getUniverse().catch(() => null);
-  const end0 = u?.date || new Date().toISOString().slice(0, 10);
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
+  const end0 = u?.date || wibToday();
+  // Rentang kustom (-1) tidak dibawa ke saham/kunjungan berikutnya: kembali ke 1H.
+  if (!RANGES[S.range]) S.range = 0;
   let start = subDate(end0, RANGES[S.range][1]), end = end0;
+  let seqS = 0, seqA = 0; // respons permintaan lama tidak boleh menimpa pilihan terbaru
 
   body.innerHTML = `
     <div class="toolbar">
@@ -25,25 +29,25 @@ export async function mount(el, { code }) {
     <div class="card"><h3>Tren akumulasi broker (kumulatif net value) <span class="legend" id="acclegend"></span></h3><div id="acc" class="chart" style="height:340px">${loading()}</div></div>`;
 
   const loadSummary = async () => {
-    const box = $('#bsum');
+    const box = $('#bsum'), my = ++seqS;
     box.innerHTML = loading('Memuat broker summary…');
     try {
       const p = new URLSearchParams({ code, start_date: start, end_date: end });
       if (S.flow !== 'all') p.set('flow', S.flow);
       const j = await api('/api/broker-summary?' + p);
-      if (alive) box.innerHTML = summaryHtml(j);
-    } catch (e) { if (alive) box.innerHTML = errBox(e); }
+      if (alive && my === seqS) box.innerHTML = summaryHtml(j);
+    } catch (e) { if (alive && my === seqS) box.innerHTML = errBox(e); }
   };
 
   const loadAccum = async () => {
-    const box = $('#acc');
+    const box = $('#acc'), my = ++seqA;
     disposeChart(chart); chart = null;
     box.innerHTML = loading('Memuat tren akumulasi…');
     try {
       const p = new URLSearchParams({ code, top: '3' });
       if (RANGES[S.range]?.[1] >= 30 || S.range === -1) { p.set('start_date', start); p.set('end_date', end); }
       const [j, c] = await Promise.all([api('/api/broker-accum?' + p), api('/api/candles?code=' + code).catch(() => null)]);
-      if (!alive) return;
+      if (!alive || my !== seqA) return;
       box.innerHTML = '';
       if (!j.series?.length) { box.innerHTML = '<div class="empty">Tidak ada data akumulasi.</div>'; return; }
       chart = makeChart(box, 340, { leftPriceScale: { visible: true, borderColor: '#1c2740' } });
@@ -63,7 +67,7 @@ export async function mount(el, { code }) {
       }
       chart.timeScale().fitContent();
       $('#acclegend').innerHTML = legend.join(' ');
-    } catch (e) { if (alive) box.innerHTML = errBox(e); }
+    } catch (e) { if (alive && my === seqA) box.innerHTML = errBox(e); }
   };
 
   $('#rng').onclick = e => {
@@ -81,6 +85,7 @@ export async function mount(el, { code }) {
     loadSummary();
   };
   $('#go').onclick = () => {
+    if (!$('#d1').value || !$('#d2').value) return;
     start = $('#d1').value; end = $('#d2').value;
     S.range = -1; $('#rng').querySelectorAll('button').forEach(x => x.classList.remove('on'));
     loadSummary(); loadAccum();

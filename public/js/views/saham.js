@@ -10,7 +10,7 @@ export async function mount(el, { code }) {
 
   let q;
   try { q = await api('/api/quote?code=' + code); } catch (e) { body.innerHTML = errBox(e); return cleanup; }
-  if (!alive) return cleanup;
+  if (!alive || !el.isConnected) return cleanup; // pengguna sudah pindah menu/saham selagi data dimuat
   const r = q.row;
   if (!r) { body.innerHTML = errBox(new Error('Data histori saham ini belum cukup')); return cleanup; }
 

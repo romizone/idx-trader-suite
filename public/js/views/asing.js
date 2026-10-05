@@ -9,11 +9,14 @@ export async function mount(el) {
   const page = $('.page', el);
   let j;
   try { j = await api('/api/foreign'); } catch (e) { page.innerHTML = errBox(e); return; }
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
   const rows = j.rows;
   const tot = k => rows.reduce((s, r) => s + (r[k] || 0), 0);
-  const top = (k, dir) => [...rows].sort((a, b) => (b[k] - a[k]) * dir).slice(0, 8);
+  // Hanya yang benar-benar net buy (dir 1) / net sell (dir −1), supaya daftar tidak diisi arah sebaliknya.
+  const top = (k, dir) => rows.filter(r => r[k] * dir > 0).sort((a, b) => (b[k] - a[k]) * dir).slice(0, 8);
   const mini = (list, k) => {
     const mx = Math.max(...list.map(r => Math.abs(r[k]))) || 1;
+    if (!list.length) return '<div class="flat">Tidak ada.</div>';
     return list.map(r => `<a class="barrow" href="#/bandar/${r.code}"><b>${r.code}</b><span class="bartrack"><i class="${r[k] < 0 ? 'neg' : ''}" style="width:${(Math.abs(r[k]) / mx) * 100}%"></i></span><em class="${cls(r[k])}">${fmtRp(r[k])}</em></a>`).join('');
   };
 

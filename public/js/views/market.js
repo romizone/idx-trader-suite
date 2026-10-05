@@ -9,8 +9,10 @@ export async function mount(el) {
   const page = $('.page', el);
   let u;
   try { u = await getUniverse(); } catch (e) { page.innerHTML = errBox(e); return; }
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
   // Chg% hanya tersedia untuk saham likuid hasil scan (memakai cache yang sama).
   const scan = await api('/api/scan').catch(() => null);
+  if (!el.isConnected) return;
   const chg = new Map((scan?.rows || []).map(r => [r.code, r.chg]));
   const data = u.data.map(x => ({ ...x, chg: chg.get(x.code) ?? null }));
   const total = data.reduce((s, x) => s + (x.mcap || 0), 0);

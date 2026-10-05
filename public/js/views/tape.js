@@ -3,7 +3,7 @@ import { $, api, fmtN, fmtRp, cls, esc, stockHeader, loading, errBox, toast, eod
 
 export async function mount(el, { code }) {
   const body = stockHeader(el, 'tape', code);
-  let alive = true, timer = null, page = 1, data = null, loadedAt = 0;
+  let alive = true, timer = null, page = 1, data = null, loadedAt = 0, seq = 0;
   // Default selalu "Terbaru" (tanggal paling baru di sumber); auto-cek aktif kecuali pernah dimatikan pengguna.
   const S = { date: '', minLot: 0, broker: '', side: '' };
   let autoOn = true;
@@ -25,10 +25,11 @@ export async function mount(el, { code }) {
     <div class="pager" id="tp"></div></div>`;
 
   const load = async () => {
+    const my = ++seq; // respons halaman/tanggal sebelumnya tidak boleh menimpa pilihan terbaru
     if (!data) $('#tt tbody').innerHTML = `<tr><td colspan="8">${loading()}</td></tr>`;
     try {
       const j = await api(`/api/tape?code=${code}&page=${page}${S.date ? '&date=' + S.date : ''}`);
-      if (!alive) return;
+      if (!alive || my !== seq) return;
       const prev = data?.date;
       data = j; loadedAt = Date.now();
       // Pilihan tanggal = daftar tanggal yang tersedia di sumber; "Terbaru" selalu mengikuti tanggal paling baru.
@@ -38,7 +39,7 @@ export async function mount(el, { code }) {
       $('#td').value = S.date;
       if (prev && !S.date && j.date > prev) toast(`Running trade ${j.date} sudah terbit`);
       draw();
-    } catch (e) { if (alive) $('#tt tbody').innerHTML = `<tr><td colspan="8">${errBox(e)}</td></tr>`; }
+    } catch (e) { if (alive && my === seq) $('#tt tbody').innerHTML = `<tr><td colspan="8">${errBox(e)}</td></tr>`; }
   };
 
   const draw = () => {
@@ -54,7 +55,7 @@ export async function mount(el, { code }) {
     $('#tsum').innerHTML = `${note ? `<div class="hint" style="margin:0 0 8px">⚠ ${esc(note)}</div>` : ''}
       <div class="kpis inline">
         <div class="kpi"><div class="l">Tanggal · total trx</div><div class="v">${fmtN(j.total)}</div><div class="s">${j.date}${j.latest ? ' (terbaru)' : ''} · halaman ${j.page}/${fmtN(j.total_pages)}</div></div>
-        <div class="kpi"><div class="l">HAKA vs HAKI (halaman ini)</div><div class="meter"><i style="width:${s.hakaPct ?? 50}%"></i></div><div class="s"><span class="up">${fmtN(s.hakaPct, 1)}%</span> · <span class="down">${fmtN(100 - (s.hakaPct ?? 50), 1)}%</span> · ${esc(s.verdict)}</div></div>
+        <div class="kpi"><div class="l">HAKA vs HAKI (halaman ini)</div><div class="meter"><i style="width:${s.hakaPct ?? 50}%"></i></div><div class="s"><span class="up">${fmtN(s.hakaPct, 1)}%</span> · <span class="down">${fmtN(s.hakaPct == null ? null : 100 - s.hakaPct, 1)}%</span> · ${esc(s.verdict)}</div></div>
         <div class="kpi"><div class="l">Rentang waktu</div><div class="v" style="font-size:15px">${s.from || '—'} – ${s.to || '—'}</div><div class="s">${s.count} trx · rata2 ${fmtN(avgLot, 0)} lot</div></div>
         <div class="kpi"><div class="l">Range harga</div><div class="v" style="font-size:15px">${fmtN(s.low)} – ${fmtN(s.high)}</div><div class="s">VWAP ${fmtN(s.vwap, 1)}</div></div>
         <div class="kpi"><div class="l">Broker dominan</div><div class="v" style="font-size:15px"><span class="up">${s.topBuyers[0]?.code || '—'}</span> / <span class="down">${s.topSellers[0]?.code || '—'}</span></div><div class="s">net buyer / net seller</div></div>

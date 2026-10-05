@@ -45,6 +45,7 @@ export async function mount(el) {
   const page = $('.page', el);
   let j;
   try { j = await api('/api/scan'); } catch (e) { page.innerHTML = errBox(e); return; }
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
   const rows = j.rows;
 
   page.innerHTML = `

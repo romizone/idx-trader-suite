@@ -25,7 +25,8 @@ function corr(a, b) {
 
 export async function mount(el, { arg }) {
   let codes = (arg ? decodeURIComponent(arg).toUpperCase().split(',') : DEF).filter(c => /^[A-Z0-9]{3,6}$/.test(c)).slice(0, 6);
-  let chart = null, alive = true;
+  if (!codes.length) codes = [...DEF];
+  let chart = null, alive = true, seq = 0;
   const setHash = () => history.replaceState(null, '', `#/bandingkan/${codes.join(',')}`);
 
   el.innerHTML = `<div class="page">
@@ -43,17 +44,24 @@ export async function mount(el, { arg }) {
   $('#chips').onclick = e => { const b = e.target.closest('[data-rm]'); if (b && codes.length > 1) { codes = codes.filter(c => c !== b.dataset.rm); setHash(); load(); } };
 
   const load = async () => {
+    const my = ++seq; // respons permintaan lama (ganti periode/saham dengan cepat) diabaikan
     const u = await getUniverse().catch(() => null);
+    if (!alive || my !== seq) return;
     const name = c => u?.data.find(s => s.code === c)?.name || '';
     $('#chips').innerHTML = codes.map((c, i) => `<span class="chip" style="border-color:${COLORS[i]}"><i style="background:${COLORS[i]}"></i><b>${c}</b> <small class="flat">${esc(name(c))}</small> <button data-rm="${c}" title="Hapus">✕</button></span>`).join('');
     $('#cstats').innerHTML = loading();
     disposeChart(chart); chart = null;
     try {
       const res = await Promise.all(codes.map(c => api(`/api/candles?code=${c}&limit=${range}`).then(j => ({ c, rows: [...j.rows].sort((a, b) => (a.date < b.date ? -1 : 1)) })).catch(e => ({ c, err: e.message }))));
-      if (!alive) return;
-      const ok = res.filter(r => !r.err && r.rows.length > 5);
-      const start = ok.reduce((m, r) => (r.rows[0].date > m ? r.rows[0].date : m), '0000');
-      ok.forEach(r => { r.rows = r.rows.filter(x => x.date >= start); r.st = stats(r.rows); });
+      if (!alive || my !== seq) return;
+      const all = res.filter(r => !r.err && r.rows.length > 5);
+      if (!all.length) { $('#cstats').innerHTML = res.map(r => `<div class="down">${r.c}: ${esc(r.err || 'Data histori kurang')}</div>`).join(''); return; }
+      const start = all.reduce((m, r) => (r.rows[0].date > m ? r.rows[0].date : m), '0000');
+      all.forEach(r => { r.rows = r.rows.filter(x => x.date >= start); });
+      // Saham yang historinya tidak beririsan dengan periode bersama dilewati, bukan menggagalkan semuanya.
+      const ok = all.filter(r => r.rows.length > 1);
+      ok.forEach(r => { r.st = stats(r.rows); });
+      disposeChart(chart);
       chart = makeChart($('#cchart'), 400, { localization: { priceFormatter: v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` } });
       ok.forEach(r => {
         const i = codes.indexOf(r.c), base = r.rows[0].close;
@@ -76,7 +84,7 @@ export async function mount(el, { arg }) {
           </table></div><div class="flat" style="font-size:11px;margin-top:6px">Mendekati 1 = bergerak searah; mendekati 0 = tidak berhubungan (baik untuk diversifikasi).</div></div>
         </div>
         ${res.filter(r => r.err).map(r => `<div class="down">${r.c}: ${esc(r.err)}</div>`).join('')}`;
-    } catch (e) { if (alive) $('#cstats').innerHTML = errBox(e); }
+    } catch (e) { if (alive && my === seq) $('#cstats').innerHTML = errBox(e); }
   };
   setHash();
   load();

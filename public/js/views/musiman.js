@@ -15,6 +15,7 @@ export async function mount(el, { code }) {
   body.innerHTML = loading('Memuat data musiman…');
   let j;
   try { j = await api('/api/seasonal?code=' + code); } catch (e) { body.innerHTML = errBox(e); return; }
+  if (!el.isConnected) return; // pengguna sudah pindah menu selagi data dimuat
   const years = j.years || [];
   const sum = j.summary || {};
   const cur = MONTHS[new Date(Date.now() + 7 * 3600e3).getUTCMonth()];

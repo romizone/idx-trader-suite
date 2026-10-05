@@ -46,23 +46,33 @@ function run(rows, sig) {
   let cash = 100, pos = null;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    if (pos) {
+    const net = exit => (exit * (1 - S.feeS / 100)) / (pos.entry * (1 + S.feeB / 100)) - 1;
+    const close = (exit, why) => {
+      const ret = net(exit);
+      cash = pos.cash * (1 + ret);
+      trades.push({ in: pos.date, out: r.date, entry: pos.entry, exit, ret: ret * 100, days: i - pos.i, why });
+      pos = null;
+    };
+    // Stop/target kena di dalam bar ini (stop diperiksa dulu = asumsi konservatif).
+    const intraday = () => {
       const stop = S.sl > 0 ? pos.entry * (1 - S.sl / 100) : null, take = S.tp > 0 ? pos.entry * (1 + S.tp / 100) : null;
-      let exit = null, why = '';
-      if (stop && r.low <= stop) { exit = Math.min(r.open, stop); why = 'Stop loss'; }
-      else if (take && r.high >= take) { exit = Math.max(r.open, take); why = 'Take profit'; }
-      else if (sig[i - 1] === -1) { exit = r.open; why = 'Sinyal jual'; }
-      if (exit != null) {
-        const ret = (exit * (1 - S.feeS / 100)) / (pos.entry * (1 + S.feeB / 100)) - 1;
-        cash = pos.cash * (1 + ret);
-        trades.push({ in: pos.date, out: r.date, entry: pos.entry, exit, ret: ret * 100, days: i - pos.i, why });
-        pos = null;
-      }
+      if (stop && r.low <= stop) { close(Math.min(r.open, stop), 'Stop loss'); return true; }
+      if (take && r.high >= take) { close(Math.max(r.open, take), 'Take profit'); return true; }
+      return false;
+    };
+    let hit = false;
+    if (pos) {
+      hit = intraday();
+      if (!hit && sig[i - 1] === -1) close(r.open, 'Sinyal jual');
     }
-    if (!pos && i > 0 && sig[i - 1] === 1) pos = { entry: r.open, date: r.date, i, cash };
-    equity.push({ time: r.date, value: pos ? pos.cash * (r.close / pos.entry) * (1 - S.feeB / 100) : cash });
+    // Setelah stop/target kena di tengah bar, tidak boleh masuk lagi di harga open bar yang sama (sudah lewat).
+    if (!pos && !hit && i > 0 && sig[i - 1] === 1) {
+      pos = { entry: r.open, date: r.date, i, cash };
+      intraday(); // stop/target juga berlaku di hari masuk
+    }
+    equity.push({ time: r.date, value: pos ? pos.cash * (1 + net(r.close)) : cash });
   }
-  if (pos) { const last = rows[rows.length - 1]; trades.push({ in: pos.date, out: '(terbuka)', entry: pos.entry, exit: last.close, ret: (last.close / pos.entry - 1) * 100, days: rows.length - 1 - pos.i, why: 'Masih dipegang', open: true }); }
+  if (pos) { const last = rows[rows.length - 1]; trades.push({ in: pos.date, out: '(terbuka)', entry: pos.entry, exit: last.close, ret: ((last.close * (1 - S.feeS / 100)) / (pos.entry * (1 + S.feeB / 100)) - 1) * 100, days: rows.length - 1 - pos.i, why: 'Masih dipegang', open: true }); }
   let peak = 0, mdd = 0;
   for (const e of equity) { peak = Math.max(peak, e.value); mdd = Math.min(mdd, e.value / peak - 1); }
   const closed = trades.filter(t => !t.open), wins = closed.filter(t => t.ret > 0), losses = closed.filter(t => t.ret <= 0);
@@ -78,7 +88,7 @@ function run(rows, sig) {
 
 export async function mount(el, { code }) {
   const body = stockHeader(el, 'backtest', code);
-  let c1 = null, c2 = null, alive = true, rows = null;
+  let c1 = null, c2 = null, alive = true, rows = null, seq = 0;
   const params = () => STRATS[S.strat].params.map(([k, t, d]) => `<label>${t} <input type="number" class="inp n" data-p="${k}" value="${S.p[S.strat + k] ?? d}"></label>`).join('');
   body.innerHTML = `
     <div class="toolbar">
@@ -104,6 +114,7 @@ export async function mount(el, { code }) {
   };
   const compute = () => {
     if (!rows) return;
+    if (rows.length < 2) { $('#bres').innerHTML = '<div class="empty">Data histori saham ini belum cukup untuk backtest.</div>'; return; }
     const p = readParams();
     const res = run(rows, signals(rows, S.strat, p));
     disposeChart(c1); disposeChart(c2);
@@ -135,13 +146,14 @@ export async function mount(el, { code }) {
     c2.timeScale().fitContent();
   };
   const load = async () => {
+    const my = ++seq;
     $('#bres').innerHTML = loading('Memuat data histori…');
     try {
       const j = await api(`/api/candles?code=${code}&limit=${S.limit}`);
-      if (!alive) return;
+      if (!alive || my !== seq) return;
       rows = [...j.rows].sort((a, b) => (a.date < b.date ? -1 : 1));
       compute();
-    } catch (e) { if (alive) $('#bres').innerHTML = errBox(e); }
+    } catch (e) { if (alive && my === seq) $('#bres').innerHTML = errBox(e); }
   };
   $('#bs').onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; S.strat = b.dataset.s; $('#bs').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#bp').innerHTML = params(); compute(); };
   body.addEventListener('change', e => { if (e.target.id === 'bl') { S.limit = Number(e.target.value); load(); } else if (e.target.matches('input')) compute(); });

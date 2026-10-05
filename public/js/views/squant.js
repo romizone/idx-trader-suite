@@ -48,7 +48,7 @@ function ttDots(tt) {
 }
 
 export async function mount(el) {
-  let chart = null, alive = true, data = null;
+  let chart = null, alive = true, data = null, pseq = 0, detail = null;
   el.innerHTML = `<div class="page">
     <div class="phead">
       <div><h2>🧭 Squant Screener</h2><div class="flat" id="qsub">Elliott Wave (ZigZag 4/8/16 + fib) · breakout kompresi SMA 3/5/10/20 · Trend Template 6 syarat</div></div>
@@ -67,10 +67,12 @@ export async function mount(el) {
 
   const load = async () => {
     $('#qbody').innerHTML = loading(`Menghitung Squant untuk ${S.top} saham…`);
+    const top = S.top; // respons universe yang sudah diganti lagi diabaikan
     try {
-      data = await api('/api/squant?top=' + S.top);
-      if (alive) draw();
-    } catch (e) { if (alive) $('#qbody').innerHTML = errBox(e); }
+      const j = await api('/api/squant?top=' + top);
+      if (!alive || top !== S.top) return;
+      data = j; draw();
+    } catch (e) { if (alive && top === S.top) $('#qbody').innerHTML = errBox(e); }
   };
 
   const filtered = () => {
@@ -142,12 +144,18 @@ export async function mount(el) {
   };
 
   const preview = async code => {
+    const my = ++pseq; // hanya panggilan terakhir yang boleh menggambar (filter diketik cepat memanggil ini berulang)
     disposeChart(chart); chart = null;
     const r0 = data.rows.find(x => x.code === code);
-    $('#qprev').innerHTML = `<div class="card">${loading(`Memuat grafik ${code}…`)}</div>`;
-    let d;
-    try { d = await api('/api/squant-chart?code=' + code); } catch (e) { if (alive) $('#qprev').innerHTML = `<div class="card">${errBox(e)}</div>`; return; }
-    if (!alive || S.sel !== code) return;
+    // Detail saham yang sama dipakai ulang: mengubah filter tidak perlu mengambil ulang dari server.
+    let d = detail?.code === code ? detail : null;
+    if (!d) {
+      $('#qprev').innerHTML = `<div class="card">${loading(`Memuat grafik ${code}…`)}</div>`;
+      try { d = await api('/api/squant-chart?code=' + code); }
+      catch (e) { if (alive && my === pseq && $('#qprev')) $('#qprev').innerHTML = `<div class="card">${errBox(e)}</div>`; return; }
+    }
+    if (!alive || my !== pseq || S.sel !== code || !$('#qprev')) return;
+    detail = d;
     const tog = (k, t) => `<label class="chk"><input type="checkbox" data-show="${k}" ${S.show[k] ? 'checked' : ''}> ${t}</label>`;
     $('#qprev').innerHTML = `<div class="card"><h3>${d.code} · ${esc(d.name)} — ${fmtN(d.price)} <span class="${cls(d.chg)}">${pct(d.chg)}</span> · skor ${r0?.score ?? d.score}
       <span class="links"><a class="btn small" href="#/saham/${code}">Analisa →</a><a class="btn small" href="#/bandar/${code}">Bandar →</a><a class="btn small" href="#/backtest/${code}">Backtest →</a><button class="btn small" id="qclose">✕</button></span></h3>
@@ -208,7 +216,7 @@ function sidePanel(d) {
     if (!e.dir) return `<div class="flat" style="margin:6px 0"><b style="color:${EW_COL[e.len]}">EW ${e.len}</b> — belum ada pola (histori 250 hari)</div>`;
     const f = e.fib;
     return `<div style="margin:8px 0">
-      <div><b style="color:${EW_COL[e.len]}">EW ${e.len}</b> ${ewBadge(e)} <span class="flat" style="font-size:11.5px">${e.age} hari lalu</span></div>
+      <div><b style="color:${EW_COL[e.len]}">EW ${e.len}</b> ${ewBadge({ ...e, retrace: e.retrace ?? e.fib?.retrace })} <span class="flat" style="font-size:11.5px">${e.age} hari lalu</span></div>
       <div style="font-size:12px;margin-top:2px">${esc(e.label)}</div>
       <div class="flat mono" style="font-size:11px">(1) ${e.pts[1].date} ${fmtN(e.pts[1].price)} → (5) ${e.pts[5].date} ${fmtN(e.pts[5].price)}</div>
       ${e.abc ? `<div class="flat mono" style="font-size:11px">(a) ${fmtN(e.abc.a.price)} · (b) ${fmtN(e.abc.b.price)} · (c) ${e.abc.c.date} ${fmtN(e.abc.c.price)}${e.abc.broken ? ` · jebol ${e.abc.broken}` : ''}</div>` : ''}
